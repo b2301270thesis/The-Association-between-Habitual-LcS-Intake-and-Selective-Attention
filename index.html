@@ -1,0 +1,1288 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Selective Attention Study</title>
+
+  <script src="https://unpkg.com/jspsych@8.2.1"></script>
+  <link href="https://unpkg.com/jspsych@8.2.1/css/jspsych.css" rel="stylesheet">
+
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@2.1.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-button-response@2.1.0"></script>
+  <script src="https://unpkg.com/@jspsych/extension-pipe@0.2.0"></script>
+
+  <style>
+    body {
+      background: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .instructions {
+      max-width: 750px;
+      margin: auto;
+      line-height: 1.7;
+      font-size: 20px;
+    }
+
+    .arrows {
+      font-family: Arial, sans-serif;
+      font-size: 65px;
+      font-weight: bold;
+      letter-spacing: 5px;
+      white-space: nowrap;
+    }
+
+    .response-reminders {
+      position: fixed;
+      bottom: 8%;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-around;
+      font-size: 18px;
+    }
+
+    .response-reminder {
+      width: 45%;
+      text-align: center;
+    }
+
+    .gold { color: gold; }
+    .red { color: red; }
+    .gray { color: gray; }
+
+    .feedback-correct {
+      position: fixed;
+      top: 80%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: green;
+      font-family: Arial, sans-serif;
+      font-size: 5vh;
+      font-weight: bold;
+    }
+
+    .red-circle {
+      width: 15vh;
+      height: 15vh;
+      border: 5px solid red;
+      border-radius: 50%;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .direction-feedback {
+      position: fixed;
+      top: 62%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: red;
+      font-size: 4vh;
+      white-space: nowrap;
+    }
+
+    .participant-form {
+      font-family: Arial, sans-serif;
+      font-size: 20px;
+      margin: auto;
+      max-width: 600px;
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    .participant-form input {
+      font-size: 20px;
+      padding: 10px;
+      width: 250px;
+      margin: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="participant-entry" class="participant-form">
+
+  <h2>Selective Attention Study</h2>
+
+  <p>Please enter your Participant ID before beginning the experiment.</p>
+
+  <input
+    type="text"
+    id="participant-id"
+    placeholder="Enter Participant ID"
+    autocomplete="off"
+  >
+
+  <br>
+
+  <button id="start-experiment">Continue</button>
+
+  <p id="id-error" style="color:red;"></p>
+
+</div>
+
+<script>
+
+// ======================================
+// 1. EXPERIMENT SETTINGS
+// ======================================
+
+const EXPERIMENT_ID = "B19EGnjvuEar";
+
+let subject_id = "";
+
+let practiceAttempt = 0;
+let practicePassed = false;
+
+let practiceResponses = [];
+let lastPracticeResponse = null;
+
+const practiceHistory = [];
+
+let jsPsych;
+
+
+// ======================================
+// 2. PARTICIPANT ID ENTRY
+// ======================================
+
+document.getElementById("start-experiment")
+  .addEventListener("click", function() {
+
+    const enteredID = document
+      .getElementById("participant-id")
+      .value
+      .trim();
+
+    if (!enteredID) {
+      document.getElementById("id-error").textContent =
+        "Please enter your Participant ID before continuing.";
+      return;
+    }
+
+    subject_id = enteredID.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    if (!subject_id) {
+      document.getElementById("id-error").textContent =
+        "Please enter a valid Participant ID.";
+      return;
+    }
+
+    document.getElementById("participant-entry").style.display = "none";
+
+    startExperiment();
+
+  });
+
+
+// ======================================
+// 3. INITIALIZE jsPsych AND DATAPIPE
+// ======================================
+
+function startExperiment() {
+
+  jsPsych = initJsPsych({
+
+    extensions: [
+      {
+        type: jsPsychExtensionPipe,
+
+        params: {
+          experiment_id: EXPERIMENT_ID,
+          filename: () => `${subject_id}.csv`
+        }
+      }
+    ]
+
+  });
+
+  jsPsych.data.addProperties({
+    subject_id: subject_id
+  });
+
+  runTask();
+
+}
+
+
+// ======================================
+// 4. RESPONSE REMINDERS
+// ======================================
+
+function responseReminders(
+  leftClass = "gray",
+  rightClass = "gray"
+) {
+
+  return `
+
+    <div class="response-reminders">
+
+      <div class="response-reminder ${leftClass}">
+        Press 'Q' if CENTER arrow points LEFT
+      </div>
+
+      <div class="response-reminder ${rightClass}">
+        Press 'P' if CENTER arrow points RIGHT
+      </div>
+
+    </div>
+
+  `;
+}
+
+
+// ======================================
+// 5. GENERATE FLANKER STIMULI
+// ======================================
+
+function makeTrials(repetitions) {
+
+  const trials = [];
+
+  const conditions = [
+
+    { congruency: "congruent", target: "left" },
+
+    { congruency: "congruent", target: "right" },
+
+    { congruency: "incongruent", target: "left" },
+
+    { congruency: "incongruent", target: "right" }
+
+  ];
+
+  conditions.forEach(condition => {
+
+    for (let i = 0; i < repetitions; i++) {
+
+      const targetDirection = condition.target;
+
+      const flankerDirection =
+        condition.congruency === "congruent"
+          ? targetDirection
+          : (targetDirection === "left" ? "right" : "left");
+
+      const targetArrow =
+        targetDirection === "left" ? "&lt;" : "&gt;";
+
+      const flankerArrow =
+        flankerDirection === "left" ? "&lt;" : "&gt;";
+
+      trials.push({
+
+        congruency: condition.congruency,
+
+        target_direction: targetDirection,
+
+        correct_key:
+          targetDirection === "left" ? "q" : "p",
+
+        stimulus:
+          `<div class="arrows">${flankerArrow} ${flankerArrow} ${targetArrow} ${flankerArrow} ${flankerArrow}</div>`
+
+      });
+
+    }
+
+  });
+
+  return jsPsych.randomization.shuffle(trials);
+
+}
+
+
+// ======================================
+// 6. CREATE A RESPONSE TRIAL
+// ======================================
+
+function responseTrial(trial, phase, number) {
+
+  return {
+
+    type: jsPsychHtmlKeyboardResponse,
+
+    stimulus: `
+
+      ${trial.stimulus}
+
+      ${responseReminders()}
+
+    `,
+
+    choices: ["q", "p"],
+
+    trial_duration: 1750,
+
+    data: {
+
+      subject_id: subject_id,
+
+      phase: phase,
+
+      task_trial_type: "response",
+
+      trial_number: number,
+
+      block_number:
+        phase === "practice" ? practiceAttempt + 1 : 1,
+
+      congruency: trial.congruency,
+
+      inquisit_congruence:
+        trial.congruency === "congruent" ? 1 : 2,
+
+      inquisit_selecttarget:
+        trial.target_direction === "right" ? 1 : 2,
+
+      target_direction: trial.target_direction,
+
+      correct_key: trial.correct_key
+
+    },
+
+    on_finish: function(data) {
+
+      data.correct =
+        data.response === data.correct_key ? 1 : 0;
+
+      data.response_key = data.response;
+
+      if (phase === "practice") {
+
+        lastPracticeResponse = {
+
+          response: data.response,
+
+          correct: data.correct,
+
+          correct_key: trial.correct_key,
+
+          target_direction: trial.target_direction
+
+        };
+
+        practiceResponses.push(lastPracticeResponse);
+
+        console.log(
+          "Practice response saved:",
+          lastPracticeResponse
+        );
+
+      }
+
+    }
+
+  };
+
+}
+
+
+// ======================================
+// 7. INSTRUCTION DEMONSTRATIONS
+// ======================================
+
+function instructionDemoTrial(trial, prompt) {
+
+  return {
+
+    type: jsPsychHtmlKeyboardResponse,
+
+    stimulus: `
+
+      <div class="instructions">
+
+        <p>${prompt}</p>
+
+        ${trial.stimulus}
+
+      </div>
+
+      ${responseReminders()}
+
+    `,
+
+    choices: [trial.correct_key],
+
+    data: {
+
+      subject_id: subject_id,
+
+      phase: "instruction",
+
+      task_trial_type: "demonstration",
+
+      congruency: trial.congruency,
+
+      target_direction: trial.target_direction
+
+    },
+
+    on_finish: function(data) {
+
+      data.correct = 1;
+
+      data.response_key = data.response;
+
+    }
+
+  };
+
+}
+
+
+// ======================================
+// 8. FIXATION TRIAL
+// ======================================
+
+function fixationTrial(phase) {
+
+  return {
+
+    type: jsPsychHtmlKeyboardResponse,
+
+    stimulus: `
+
+      <div style="font-size:65px;font-weight:bold;">+</div>
+
+      ${responseReminders()}
+
+    `,
+
+    choices: "NO_KEYS",
+
+    trial_duration: 1000,
+
+    data: {
+
+      subject_id: subject_id,
+
+      phase: phase,
+
+      task_trial_type: "fixation"
+
+    }
+
+  };
+
+}
+
+
+// ======================================
+// 9. RESPONSE HIGHLIGHT
+// ======================================
+
+function highlightTrial(phase) {
+
+  return {
+
+    type: jsPsychHtmlKeyboardResponse,
+
+    stimulus: function() {
+
+      const last = jsPsych.data.get()
+        .filter({
+          phase: phase,
+          task_trial_type: "response"
+        })
+        .last(1)
+        .values()[0];
+
+      const response = last ? last.response : null;
+
+      return responseReminders(
+
+        response === "q" ? "gold" : "gray",
+
+        response === "p" ? "gold" : "gray"
+
+      );
+
+    },
+
+    choices: "NO_KEYS",
+
+    trial_duration: 100,
+
+    data: {
+
+      subject_id: subject_id,
+
+      phase: phase,
+
+      task_trial_type: "response_highlight"
+
+    }
+
+  };
+
+}
+
+
+// ======================================
+// 10. INTER-TRIAL INTERVAL
+// ======================================
+
+function blankTrial(phase) {
+
+  return {
+
+    type: jsPsychHtmlKeyboardResponse,
+
+    stimulus: "",
+
+    choices: "NO_KEYS",
+
+    trial_duration: 500,
+
+    data: {
+
+      subject_id: subject_id,
+
+      phase: phase,
+
+      task_trial_type: "inter_trial_interval"
+
+    }
+
+  };
+
+}
+
+
+// ======================================
+// 11. PRACTICE FEEDBACK
+// ======================================
+
+function practiceFeedbackTrial(trial) {
+
+  return {
+
+    type: jsPsychHtmlKeyboardResponse,
+
+    stimulus: "",
+
+    choices: "NO_KEYS",
+
+    trial_duration: 1000,
+
+    data: {
+
+      subject_id: subject_id,
+
+      phase: "practice",
+
+      task_trial_type: "practice_feedback"
+
+    },
+
+    on_start: function(feedbackTrial) {
+
+      const responseData = lastPracticeResponse;
+
+      console.log("Practice response:", responseData);
+
+      if (!responseData) {
+
+        console.error("Practice response was not saved.");
+
+        feedbackTrial.stimulus = `
+          <p style="color:red;">
+            Response retrieval error.
+          </p>
+        `;
+
+        feedbackTrial.choices = "NO_KEYS";
+        feedbackTrial.trial_duration = 1000;
+
+        return;
+
+      }
+
+      // CORRECT RESPONSE
+
+      if (responseData.correct === 1) {
+
+        feedbackTrial.stimulus = `
+
+          <div class="feedback-correct">
+            Correct!
+          </div>
+
+        `;
+
+        feedbackTrial.choices = "NO_KEYS";
+
+        feedbackTrial.trial_duration = 1000;
+
+      }
+
+      // INCORRECT RESPONSE
+
+      else {
+
+        const directionText =
+          trial.target_direction === "left"
+            ? "The CENTER arrow points to the LEFT"
+            : "The CENTER arrow points to the RIGHT";
+
+        const reminders =
+          trial.target_direction === "left"
+            ? responseReminders("red", "gray")
+            : responseReminders("gray", "red");
+
+        feedbackTrial.stimulus = `
+
+          <div class="red-circle"></div>
+
+          <div class="direction-feedback">
+            ${directionText}
+          </div>
+
+          ${reminders}
+
+        `;
+
+        feedbackTrial.choices = [trial.correct_key];
+
+        feedbackTrial.trial_duration = null;
+
+      }
+
+    }
+
+  };
+
+}
+
+
+// ======================================
+// 12. RUN TASK
+// ======================================
+
+function runTask() {
+
+  const timeline = [];
+
+
+// ======================================
+// INTRODUCTION
+// ======================================
+
+  timeline.push({
+
+    type: jsPsychHtmlButtonResponse,
+
+    stimulus: `
+
+      <div class="instructions">
+
+        <h2>Arrow Flanker Task</h2>
+
+        <p>You will see five arrows in the middle of the screen.</p>
+
+        <p>Your task is to identify the direction of the
+        <b>CENTER arrow</b>, while ignoring the other four arrows.</p>
+
+        <p>Press <b>Q</b> if the CENTER arrow points LEFT.</p>
+
+        <p>Press <b>P</b> if the CENTER arrow points RIGHT.</p>
+
+        <p>Sometimes all five arrows point in the same direction.
+        Sometimes the four outer arrows point in the opposite
+        direction from the CENTER arrow.</p>
+
+        <p>Respond as quickly and accurately as possible.</p>
+
+        <p>Keep your eyes on the screen and use a keyboard.</p>
+
+      </div>
+
+    `,
+
+    choices: ["Continue"]
+
+  });
+
+
+// ======================================
+// INSTRUCTION DEMONSTRATIONS
+// ======================================
+
+  const demoRightCongruent = {
+
+    congruency: "congruent",
+
+    target_direction: "right",
+
+    correct_key: "p",
+
+    stimulus:
+      `<div class="arrows">&gt; &gt; &gt; &gt; &gt;</div>`
+
+  };
+
+
+  const demoLeftIncongruent = {
+
+    congruency: "incongruent",
+
+    target_direction: "left",
+
+    correct_key: "q",
+
+    stimulus:
+      `<div class="arrows">&gt; &gt; &lt; &gt; &gt;</div>`
+
+  };
+
+
+  const demoRightIncongruent = {
+
+    congruency: "incongruent",
+
+    target_direction: "right",
+
+    correct_key: "p",
+
+    stimulus:
+      `<div class="arrows">&lt; &lt; &gt; &lt; &lt;</div>`
+
+  };
+
+
+  timeline.push(instructionDemoTrial(
+    demoRightCongruent,
+    "Example 1: The CENTER arrow points RIGHT."
+  ));
+
+  timeline.push(instructionDemoTrial(
+    demoLeftIncongruent,
+    "Example 2: The CENTER arrow points LEFT. Ignore the surrounding arrows."
+  ));
+
+  timeline.push(instructionDemoTrial(
+    demoRightIncongruent,
+    "Example 3: The CENTER arrow points RIGHT. Ignore the surrounding arrows."
+  ));
+
+
+// ======================================
+// PRACTICE INSTRUCTIONS
+// ======================================
+
+  timeline.push({
+
+    type: jsPsychHtmlButtonResponse,
+
+    stimulus: `
+
+      <div class="instructions">
+
+        <h2>Practice Session</h2>
+
+        <p>You will now complete a short practice session.</p>
+
+        <p>You need to answer at least 6 out of 8 trials correctly
+        to continue to the test.</p>
+
+        <p>You may have up to three attempts.</p>
+
+        <p>During practice, feedback will be provided after each response.</p>
+
+        <p>A fixation cross (+) will appear before the arrows.</p>
+
+        <p>Try to be as fast as possible while making as few errors as possible.</p>
+
+      </div>
+
+    `,
+
+    choices: ["Begin Practice"]
+
+  });
+
+
+// ======================================
+// PRACTICE GET READY
+// ======================================
+
+  timeline.push({
+
+    type: jsPsychHtmlKeyboardResponse,
+
+    stimulus: `
+
+      <h2>Get Ready</h2>
+
+      <p>Place your fingers on Q and P.</p>
+
+      <p>The practice session will begin shortly.</p>
+
+      ${responseReminders()}
+
+    `,
+
+    choices: "NO_KEYS",
+
+    trial_duration: 3000,
+
+    data: {
+
+      subject_id: subject_id,
+
+      phase: "practice",
+
+      task_trial_type: "get_ready"
+
+    }
+
+  });
+
+
+// ======================================
+// PRACTICE BLOCK
+// 8 TRIALS PER ATTEMPT
+// ======================================
+
+  const practiceTrials = makeTrials(2);
+
+  const practiceTimeline = [];
+
+
+  practiceTrials.forEach((trial, index) => {
+
+    practiceTimeline.push(
+      fixationTrial("practice")
+    );
+
+    practiceTimeline.push(
+      responseTrial(trial, "practice", index + 1)
+    );
+
+    practiceTimeline.push(
+      highlightTrial("practice")
+    );
+
+    practiceTimeline.push(
+      practiceFeedbackTrial(trial)
+    );
+
+    practiceTimeline.push(
+      blankTrial("practice")
+    );
+
+  });
+
+
+  const practiceBlock = {
+
+    timeline: practiceTimeline,
+
+    loop_function: function(data) {
+
+      practiceAttempt++;
+
+      const responses = practiceResponses.slice(-8);
+
+      const correctCount = responses.filter(
+        row => row.correct === 1
+      ).length;
+
+      const accuracy = responses.length === 8
+        ? correctCount / 8
+        : 0;
+
+      practicePassed =
+        responses.length === 8 && correctCount >= 6;
+
+      practiceHistory.push({
+
+        practice_attempt: practiceAttempt,
+
+        practice_correct: correctCount,
+
+        practice_total: responses.length,
+
+        practice_accuracy: accuracy,
+
+        practice_passed: practicePassed
+
+      });
+
+      console.log("Practice attempt:", practiceAttempt);
+      console.log("Responses recorded:", responses.length);
+      console.log("Correct answers:", correctCount);
+      console.log("Practice accuracy:", accuracy);
+      console.log("Practice passed:", practicePassed);
+
+      if (!practicePassed && practiceAttempt < 3) {
+
+        practiceResponses = [];
+
+        lastPracticeResponse = null;
+
+      }
+
+      return !practicePassed && practiceAttempt < 3;
+
+    }
+
+  };
+
+
+  timeline.push(practiceBlock);
+
+
+// ======================================
+// TEST INSTRUCTIONS
+// ======================================
+
+  timeline.push({
+
+    timeline: [{
+
+      type: jsPsychHtmlButtonResponse,
+
+      stimulus: `
+
+        <div class="instructions">
+
+          <h2>Actual Test</h2>
+
+          <p>You are now ready to begin the actual test.</p>
+
+          <p>There will be <b>320 trials</b>.</p>
+
+          <p>You will no longer receive performance feedback.</p>
+
+          <p>Remember to respond to the direction of the CENTER arrow,
+          not the surrounding arrows.</p>
+
+          <p>Try to be as fast as possible while making as few errors as possible.</p>
+
+        </div>
+
+      `,
+
+      choices: ["Start Test"]
+
+    }],
+
+    conditional_function: function() {
+
+      return practicePassed;
+
+    }
+
+  });
+
+
+// ======================================
+// TEST GET READY
+// ======================================
+
+  timeline.push({
+
+    timeline: [{
+
+      type: jsPsychHtmlKeyboardResponse,
+
+      stimulus: `
+
+        <h2>Get Ready</h2>
+
+        <p>The actual test will begin shortly.</p>
+
+        ${responseReminders()}
+
+      `,
+
+      choices: "NO_KEYS",
+
+      trial_duration: 3000,
+
+      data: {
+
+        subject_id: subject_id,
+
+        phase: "test",
+
+        task_trial_type: "get_ready"
+
+      }
+
+    }],
+
+    conditional_function: function() {
+
+      return practicePassed;
+
+    }
+
+  });
+
+
+// ======================================
+// MAIN TEST
+// 320 TRIALS
+// ======================================
+
+  const testTimeline = [];
+
+  const testTrials = makeTrials(80);
+
+
+  testTrials.forEach((trial, index) => {
+
+    testTimeline.push(
+      fixationTrial("test")
+    );
+
+    testTimeline.push(
+      responseTrial(trial, "test", index + 1)
+    );
+
+    testTimeline.push(
+      highlightTrial("test")
+    );
+
+    testTimeline.push(
+      blankTrial("test")
+    );
+
+  });
+
+
+  timeline.push({
+
+    timeline: testTimeline,
+
+    conditional_function: function() {
+
+      return practicePassed;
+
+    }
+
+  });
+
+
+// ======================================
+// SUCCESS END SCREEN AND SUMMARY
+// ======================================
+
+  timeline.push({
+
+    timeline: [{
+
+      type: jsPsychHtmlButtonResponse,
+
+      stimulus: `
+
+        <h2>Thank You!</h2>
+
+        <p>You have completed the Arrow Flanker Task.</p>
+
+        <p>Please click Finish to submit your responses.</p>
+
+      `,
+
+      choices: ["Finish"],
+
+      on_finish: function(data) {
+
+        const testData = jsPsych.data.get()
+          .filter({
+            phase: "test",
+            task_trial_type: "response"
+          })
+          .values();
+
+
+        function calculateCondition(condition) {
+
+          const rows = testData.filter(
+            row => row.congruency === condition
+          );
+
+          const correctRows = rows.filter(
+            row => row.correct === 1 && row.rt !== null
+          );
+
+          const accuracy = rows.length > 0
+            ? correctRows.length / rows.length
+            : null;
+
+          const meanRT = correctRows.length > 0
+            ? correctRows.reduce(
+                (sum, row) => sum + row.rt, 0
+              ) / correctRows.length
+            : null;
+
+          const IES =
+            accuracy !== null &&
+            accuracy > 0 &&
+            meanRT !== null
+              ? meanRT / accuracy
+              : null;
+
+          return {
+
+            total_trials: rows.length,
+
+            correct_trials: correctRows.length,
+
+            accuracy: accuracy,
+
+            mean_correct_RT: meanRT,
+
+            IES: IES
+
+          };
+
+        }
+
+
+        const congruent =
+          calculateCondition("congruent");
+
+        const incongruent =
+          calculateCondition("incongruent");
+
+
+        const overallCorrectRows = testData.filter(
+          row => row.correct === 1 && row.rt !== null
+        );
+
+        const overallAccuracy = testData.length > 0
+          ? overallCorrectRows.length / testData.length
+          : null;
+
+        const overallMeanRT = overallCorrectRows.length > 0
+          ? overallCorrectRows.reduce(
+              (sum, row) => sum + row.rt, 0
+            ) / overallCorrectRows.length
+          : null;
+
+        const overallIES =
+          overallAccuracy !== null &&
+          overallAccuracy > 0 &&
+          overallMeanRT !== null
+            ? overallMeanRT / overallAccuracy
+            : null;
+
+
+        Object.assign(data, {
+
+          phase: "summary",
+
+          task_trial_type: "summary",
+
+          subject_id: subject_id,
+
+          practice_attempts: practiceAttempt,
+
+          practice_passed: practicePassed,
+
+          practice_history: JSON.stringify(practiceHistory),
+
+          total_test_trials: testData.length,
+
+          overall_accuracy: overallAccuracy,
+
+          overall_mean_correct_RT: overallMeanRT,
+
+          overall_IES: overallIES,
+
+          congruent_total_trials: congruent.total_trials,
+
+          congruent_correct_trials: congruent.correct_trials,
+
+          congruent_accuracy: congruent.accuracy,
+
+          congruent_mean_correct_RT: congruent.mean_correct_RT,
+
+          congruent_IES: congruent.IES,
+
+          incongruent_total_trials: incongruent.total_trials,
+
+          incongruent_correct_trials: incongruent.correct_trials,
+
+          incongruent_accuracy: incongruent.accuracy,
+
+          incongruent_mean_correct_RT: incongruent.mean_correct_RT,
+
+          incongruent_IES: incongruent.IES
+
+        });
+
+
+        console.log("Test response rows:", testData.length);
+        console.log("Congruent summary:", congruent);
+        console.log("Incongruent summary:", incongruent);
+        console.log("Overall IES:", overallIES);
+
+      }
+
+    }],
+
+    conditional_function: function() {
+
+      return practicePassed;
+
+    }
+
+  });
+
+
+// ======================================
+// END SCREEN IF PRACTICE NOT PASSED
+// ======================================
+
+  timeline.push({
+
+    timeline: [{
+
+      type: jsPsychHtmlButtonResponse,
+
+      stimulus: `
+
+        <h2>Thank You</h2>
+
+        <p>The practice requirement was not met.</p>
+
+        <p>Your task session has ended.</p>
+
+      `,
+
+      choices: ["Finish"]
+
+    }],
+
+    conditional_function: function() {
+
+      return !practicePassed;
+
+    }
+
+  });
+
+
+// ======================================
+// RUN EXPERIMENT
+// ======================================
+
+  jsPsych.run(timeline);
+
+}
+
+</script>
+
+</body>
+</html>
+
