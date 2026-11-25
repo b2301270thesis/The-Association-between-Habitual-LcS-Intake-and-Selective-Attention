@@ -148,6 +148,38 @@ let jsPsych;
 
 
 // ======================================
+// 2A. SEND COMPLETION RECORD TO APPS SCRIPT
+// ======================================
+
+function sendCompletionToAppsScript(testTrialsCompleted) {
+  const endpoint = "https://script.google.com/macros/s/AKfycbzPNGbygn0oAQBXf2eam85N-FJN9234OsZ5uOw2okPLWNrzoSEXtGLgy1aCnM_TZd_zRQ/exec";
+
+  const payload = {
+    participant_id: subject_id,
+    status: "completed",
+    test_trials_completed: testTrialsCompleted,
+    task_version: "Flanker_v1"
+  };
+
+  // no-cors prevents the browser from blocking this cross-origin POST.
+  // The response cannot be read by the task, so verify the record in Google Sheets.
+  fetch(endpoint, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify(payload),
+    keepalive: true
+  }).then(function() {
+    console.log("Completion report request sent for " + subject_id);
+  }).catch(function(error) {
+    console.error("Completion report request failed:", error);
+  });
+}
+
+
+// ======================================
 // 2. PARTICIPANT ID ENTRY
 // ======================================
 
@@ -1227,6 +1259,16 @@ function runTask() {
         console.log("Incongruent summary:", incongruent);
         console.log("Overall IES:", overallIES);
 
+        // Send completion only if all 320 test response trials are recorded.
+        if (practicePassed && testData.length === 320) {
+          sendCompletionToAppsScript(testData.length);
+        } else {
+          console.error(
+            "Completion record not sent. Expected 320 test response trials; found " +
+            testData.length
+          );
+        }
+
       }
 
     }],
@@ -1285,4 +1327,3 @@ function runTask() {
 
 </body>
 </html>
-
